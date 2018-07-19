@@ -1,4 +1,0 @@
-FILTER
-greater_than#3
-ORDER
-abs

@@ -1,8 +1,0 @@
-FILTER
-hidden#yes#NOT
-ORDER
-abs
-FILTER
-hidden#YES#NOT
-ORDER
-abs

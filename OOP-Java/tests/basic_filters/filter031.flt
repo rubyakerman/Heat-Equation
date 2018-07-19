@@ -1,8 +1,0 @@
-FILTER
-prefix#file
-ORDER
-type#REVERSE
-FILTER
-suffix#2.txt
-ORDER
-type

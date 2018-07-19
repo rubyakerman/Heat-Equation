@@ -1,6 +1,0 @@
-FILTER
-all
-ACTION
-print_name
-ORDER
-abs

@@ -1,0 +1,23 @@
+the software was written in Python.
+
+             --------------------------------------------------------------
+             From Nand To Tetris - Project 7 - from VM code to Hack assembly 
+             --------------------------------------------------------------
+  
+			https://www.nand2tetris.org/project07
+  
+Files
+--------------------------------
+CodeWriter.py - this object responsible for writing the assembly commands into
+the output file.
+
+Makefile - as requested
+
+Parser.py - responsible for handling with the input VM-code file. so we will be 
+able to read and parse the commands throught it.
+
+VMtranslator.py - the main file responsible of the entire process.
+using the parse to parse the input file, & the CodeWriter to translate the 
+input and write it to the output file.
+
+README

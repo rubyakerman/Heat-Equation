@@ -1,8 +1,0 @@
-FILTER
-greater_than#0.5#NOT
-ORDER
-abs
-FILTER
-greater_than1#0.5
-ORDER
-abs

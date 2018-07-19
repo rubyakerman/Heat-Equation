@@ -1,4 +1,0 @@
-FILTER
-smaller_than#1.5
-ORDER
-Abs

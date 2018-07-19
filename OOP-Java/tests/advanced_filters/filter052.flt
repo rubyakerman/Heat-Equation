@@ -1,8 +1,0 @@
-FILTER
-between#0.1#0.5
-ORDER
-abs
-FILTER
-between#0#0.1
-ORDER
-abs

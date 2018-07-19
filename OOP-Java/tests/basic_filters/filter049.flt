@@ -1,4 +1,0 @@
-FILTER
-between#10#1
-ORDER
-abs

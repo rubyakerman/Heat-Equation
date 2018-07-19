@@ -1,6 +1,0 @@
-FILTER
-greater_than#1.5
-ORDER
-abs
-FILTER
-all
