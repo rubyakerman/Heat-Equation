@@ -1,3 +1,7 @@
+/**
+ * @author Roy Ackerman
+ */
+
 #include <iostream>
 #include <netdb.h>
 #include <cstring>
@@ -12,35 +16,69 @@
 using namespace std;
 
 fd_set clientFDSet;
-
 int server_socket_fd;
+
+//////////////////////////////////////
+//      Data structures             //
+//////////////////////////////////////
 vector<int> clients_fds; // the fd for our clients
 map<string, int> clients_per_fds; // keeps client name and its fd
 map<string, set<string>> groups_per_clients; // keeps for each group its clients
 
-
-int const DEFAULT_PROTOCOL = 0;
+//////////////////////////////////////
+//              Constants           //
+//////////////////////////////////////
+const int DEFAULT_PROTOCOL = 0;
 const int SERVER_ARGS_NUMBER = 2;
 const int GROUP_NAME = 2;
 const int CLIENT_NAME = 1;
 const int NAME_NOT_EXISTS = -1;
 
+
+//////////////////////////////////////
+//              Methods             //
+//////////////////////////////////////
+
+/**
+ * reports for an error.
+ * @param msg
+ */
 void report_error(string  msg) {
     cout << "ERROR: " << msg << " " << errno <<"\n";
 }
 
+/**
+ * checks weather client_command is an exit command
+ * @param client_command
+ * @return
+ */
 bool is_exit_command(string client_command){
     return (client_command.compare("exit") == 0);
 }
 
+/**
+ * checks weather client_command is a send command
+ * @param client_command
+ * @return
+ */
 bool is_send_command(string client_command){return (!client_command.compare("send"));}
 
+/**
+ * checks weather client_command is a create group command
+ * @param client_command
+ * @return
+ */
 bool is_create_group_command(string client_command){return !(client_command.compare("create_group"));}
 
+/**
+ * checks weather client_command is a who command
+ * @param client_command
+ * @return
+ */
 bool is_who_command(string client_command){return !(client_command.compare("who"));}
 
 /**
- * removes the client from groups_per_clients
+ * Removes the client from groups_per_clients.
  * @param client_name
  */
 void remove_from_groups_per_clients(string client_name){
@@ -57,7 +95,7 @@ void remove_from_groups_per_clients(string client_name){
 }
 
 /**
- * removes the client from clients_fds
+ * Removes the client from clients_fds.
  */
 void remove_fd_from_clients_fds(int client_fd){
     vector<int>:: iterator fd_i = find(clients_fds.begin(), clients_fds.end(), client_fd);
@@ -65,7 +103,7 @@ void remove_fd_from_clients_fds(int client_fd){
 }
 
 /**
- * returns the client name that belongs to client_fd fd.
+ * Returns the client name that belongs to client_fd fd.
  */
 string getClientName(int client_fd){
     const string NOT_FOUND = "";
@@ -79,7 +117,7 @@ string getClientName(int client_fd){
 
 
 /**
- * shuts down the server (user exit command)
+ * Shuts down the server (user exit command).
  * @param client_fd
  */
 void exit_command(int client_fd){
@@ -133,7 +171,7 @@ int identify_name(string c_receiver_name) {
 }
 
 /**
- * checks weather the clint name "member" is a member of the group "group".
+ * Checks weather the clint name "member" is a member of the group "group".
  * @param member_name - client name
  * @param group_name - group name
  */
@@ -143,12 +181,96 @@ bool is_group_member(string member_name, string group_name){
     if (mi == groups_per_clients.end()){ // Group is not exist
         return false;
     }else
-    {// Group was found:
+    { // Group was found:
         set<std::string> group_set = mi->second;
         bool is_found = (group_set.find(member_name) != group_set.end());
         return is_found;
     }
 }
+
+/**
+ * Sends the message to the client c_receiver_name.
+ * @param sender_fd
+ * @param c_sender_name
+ * @param message
+ * @param c_receiver_name
+ */
+void sendToClient(int sender_fd, string c_sender_name, string message, string c_receiver_name){
+    string msg_to_send = c_sender_name + ": ";
+    msg_to_send += message + "\n";
+
+    // Send message to the receiver client:
+    if (send(clients_per_fds[c_receiver_name],msg_to_send.c_str(), msg_to_send.length(),0) < 0) {
+        report_error(SEND_FUNC);
+        return;
+    }
+    print_send(true, true, c_sender_name, c_receiver_name, message);
+
+    msg_to_send = "Sent successfuly.\n";
+    // send "successfully sent" message to sender
+    if (send(sender_fd, msg_to_send.c_str(), msg_to_send.length(),0) < 0) {
+        report_error(SEND_FUNC);
+        return;
+    }
+
+}
+
+/**
+ * Sends the message to each one of the group's members
+ * @param sender_fd
+ * @param c_sender_name
+ * @param message
+ * @param c_receiver_name
+ */
+void sendToMembers(int sender_fd, string c_sender_name, string message, string c_receiver_name){
+    string message_to_target = c_sender_name + ": ";
+    message_to_target +=  message + "\n";
+    for(set<std::string> :: iterator si = groups_per_clients[c_receiver_name].begin(); si != groups_per_clients[c_receiver_name].end(); ++ si ){
+        if (c_sender_name.compare(*si) != 0){ // don't send the message to the sender
+            if (send(clients_per_fds[*si], message_to_target.c_str(), message_to_target.length(), 0) < 0) {
+                report_error(SEND_FUNC);
+                return ;
+            }
+        }
+    }
+
+    // Sends a "success message" to the sender client:
+    string message_to_client = "Sent successfully.\n";
+    if (send(sender_fd, message_to_client.c_str(), message_to_client.length(), 0) < 0) {
+        report_error(SEND_FUNC);
+        return;
+    }
+
+    // print successful sent message for the server
+    print_send(true, true, c_sender_name, c_receiver_name, message);
+}
+
+/**
+ * taking care of the sending operation to a group.
+ * @param sender_fd
+ * @param c_sender_name
+ * @param message
+ * @param c_receiver_name
+ * @param error
+ */
+void sendToGroup(int sender_fd, string c_sender_name, string message, string c_receiver_name, string error){
+
+    if (is_group_member(c_sender_name, c_receiver_name)){ // is c_sender_name a member of the group c_receiver_name?
+        // Sends message_to_target to each one of the group's members:
+        sendToMembers(sender_fd, c_sender_name, message,c_receiver_name);
+    }
+    else{ // c_sender_name is'nt a member of the group c_receiver_name
+        print_send(true, false, c_sender_name, c_receiver_name, message);
+
+        if (send(sender_fd, error.c_str(), error.length(), 0) < 0 ){
+            report_error(SEND_FUNC);
+            return;
+        }
+    }
+
+}
+
+
 
 /**
  * handles the send user send command
@@ -165,69 +287,22 @@ void send_command(int client_fd, string user_input){
 
     parse_command(uCommand, commandT, name, message, clients);
 
-    string msg_to_send = "";
     string c_sender_name = getClientName(sender_fd);
     string c_receiver_name = name;
-
-    int target = identify_name(c_receiver_name);
     string error = "ERROR: failed to send.\n";
 
-    if(target == CLIENT_NAME){
-        msg_to_send += c_sender_name + ": ";
-        msg_to_send += message + "\n";
-        // send message to the receiver client:
-        if (send(clients_per_fds[c_receiver_name],msg_to_send.c_str(), msg_to_send.length(),0) < 0) {
-            report_error(SEND_FUNC);
-            return;
-        }
-        print_send(true, true, c_sender_name, c_receiver_name, message);
+    int target = identify_name(c_receiver_name);
 
-        string msg_to_send = "Sent successfuly.\n";
-        // send "successfully sent" message to sender
-        if (send(sender_fd, msg_to_send.c_str(), msg_to_send.length(),0) < 0) {
-            report_error(SEND_FUNC);
-            return;
-        }
-        // receiver is a group name
-    }
-    else if(target == GROUP_NAME)
+    if(target == CLIENT_NAME)
     {
-        if (is_group_member(c_sender_name, c_receiver_name)){ // is c_sender_name a member of the group c_receiver_name?
-            // Sends message_to_target to each one of the group's members:
-            string message_to_target = c_sender_name + ": ";
-            message_to_target +=  message + "\n";
-            for(set<std::string> :: iterator si = groups_per_clients[c_receiver_name].begin(); si != groups_per_clients[c_receiver_name].end(); ++ si ){
-                if (c_sender_name.compare(*si) != 0){ // don't send the message to the sender
-                    if (send(clients_per_fds[*si], message_to_target.c_str(), message_to_target.length(), 0) < 0) {
-                        report_error(SEND_FUNC);
-                        return ;
-                    }
-                }
-            }
-
-            // Sends a "success message" to the sender client:
-            string message_to_client = "Sent successfully.\n";
-            if (send(sender_fd, message_to_client.c_str(), message_to_client.length(), 0) < 0) {
-                report_error(SEND_FUNC);
-                return;
-            }
-
-            // print successful sent message for the server
-            print_send(true, true, c_sender_name, c_receiver_name, message);
-
-        }
-        else{ // c_sender_name is'nt a member of the group c_receiver_name
-
-            print_send(true, false, c_sender_name, c_receiver_name, message);
-
-            if (send(sender_fd, error.c_str(), error.length(), 0) < 0 ){
-                report_error(SEND_FUNC);
-                return;
-            }
-        }
-
-    } else
-    { // target not exists
+        sendToClient(sender_fd, c_sender_name, message, c_receiver_name);
+    }
+    else if(target == GROUP_NAME) // receiver is a group name
+    {
+        sendToGroup(sender_fd, c_sender_name, message, c_receiver_name, error);
+    }
+    else // target not exists
+    {
         print_send(true, false, c_sender_name, c_receiver_name, message);
 
         if (send(sender_fd, error.c_str(), error.length(), 0) < 0) {
@@ -260,10 +335,35 @@ bool is_valid_group(string group, string  member, string group_members, int memb
     return true;
 }
 
-void create_new_group(string c_sender,string group_members, string group){
+/**
+ * Prints a "group was created successfully" message
+ * to the client & the server as well.
+ * @param group
+ * @param members
+ * @param c_sender
+ * @param sender_fd
+ */
+void printSuccessMSG(string group, set<string> members, string c_sender, int sender_fd){
+
+    groups_per_clients[group] = members;
+
+    string message = "Group \"" + group + "\" was created successfully.\n";
+    print_create_group(true, true, c_sender, group);
+
+    if (send(sender_fd,message.c_str(),message.length(),0) < 0) {
+        report_error(SEND_FUNC);
+    }
+}
+
+/**
+ * Creates a new group.
+ * @param c_sender - the client who wants to create the group.
+ * @param group_members - its members.
+ * @param group - its name.
+ */
+void create_new_group(string c_sender, string group_members, string group){
 
     string error = "ERROR: failed to create group "+group+"\".\n";;
-    string message;
     int sender_fd = clients_per_fds[c_sender];
     set<string> members;
     istringstream sStream(group_members);
@@ -276,28 +376,21 @@ void create_new_group(string c_sender,string group_members, string group){
             members.insert(next_token);
         }
         else{ // Next member is'nt a client of the server - report error
-             if (send(sender_fd, error.c_str(), error.length(), 0) < 0) {
+            if (send(sender_fd, error.c_str(), error.length(), 0) < 0) {
                 report_error(SEND_FUNC);
             }
             return;
         }
     }
-    members.insert(c_sender); // adding the sender to the group.
+    members.insert(c_sender); // Appending the sender to the group.
 
-    //.............print success messages: for sender & server.......//
-    groups_per_clients[group] = members;
-    message = "Group \"" + group;
-    message += "\" was created successfully.\n";
-    print_create_group(true, true, c_sender, group);
-
-    if (send(sender_fd,message.c_str(),message.length(),0) < 0) {
-        report_error(SEND_FUNC);
-    }
+    // Prints success messages: for sender & server
+    printSuccessMSG(group, members, c_sender, sender_fd);
 
 }
 
 /**
- * handles the "create_group" command
+ * Handles the "create_group" command
  * @param sender_fd - FD number, represents the connection file with the client
  * @param user_input - the user's input (the rest of it).
  */
@@ -327,12 +420,12 @@ void create_group_command(int sender_fd, string user_input){
         return;
     }
 
-    // creating the group:
+    // Creating the group:
     create_new_group(c_sender, group_members, group_name);
 }
 
 /**
- * handles the who command from client its fd is client_fd
+ * Handles the "who" command from client its fd is client_fd
  * @param client_fd
  */
 void who_command(int client_fd){
@@ -343,7 +436,7 @@ void who_command(int client_fd){
     client_sender_name = getClientName(client_fd);
     print_who_server(client_sender_name);
 
-    // grab available (connected) clients
+    // Grab available (connected) clients
     for(map<std::string, int> :: iterator ci = clients_per_fds.begin(); ci != clients_per_fds.end(); ++ ci){
         members += (*ci).first + ",";
     }
@@ -356,7 +449,7 @@ void who_command(int client_fd){
 }
 
 /**
- * adding new client to the server
+ * Connects (appends) a new client to the server.
  * @param client_fd
  * @param client_input
  */
@@ -365,19 +458,19 @@ void new_client_command(string c_name,int client_fd){
     string name = c_name.substr(0, c_name.find("\n"));
     string used_name_msg;
 
-    // Name is already exists (as a client or as a group)
+    // Name already exists (as a client or as a group)
     if (identify_name(name) != NAME_NOT_EXISTS) {
 
         used_name_msg = "Client name is already in use.\n";
         if (send(client_fd, used_name_msg.c_str(), used_name_msg.length(), 0) < 0) {
             report_error(SEND_FUNC);
         }
-        // Deletes the client_fd from everywhere:
+        // Remove the client_fd from everywhere:
         FD_CLR(client_fd, &clientFDSet);
         vector <int> :: iterator fdI = find(clients_fds.begin(), clients_fds.end(), client_fd);
         clients_fds.erase(fdI);
 
-        }
+    }
     else // This is new client that is'nt exist - add it
     {
         clients_per_fds[name] = client_fd;
@@ -416,20 +509,17 @@ void handle_client_input(int client_fd ,char *client_input){
 
     else if (is_who_command(client_command)){who_command(client_fd);}
 
-    else{ // command is a new client connection request (adding a client)
-
-
+    else // command is a new client connection request (adding a client)
+    {
         string c_name = client_request.substr(5, client_request.length());
-
-//        string c_name = client_command.substr(1 + client_command.find(SPACE));
         new_client_command(c_name, client_fd);
     }
 }
 
-
-
-
-// checks if we got the right number of arguments
+/**
+ * checks weather we've got
+ * the right number of arguments
+ */
 void args_validation_check(int numOfArgs){
 
     if (numOfArgs != SERVER_ARGS_NUMBER){
@@ -439,7 +529,8 @@ void args_validation_check(int numOfArgs){
 }
 
 /**
- *  this function returns an host struct filled with the localhost information
+ *  This function returns a hostent struct
+ *  filled with the localhost information
  */
 hostent* get_localhost(){
     char localhost_name[WA_MAX_NAME];
@@ -458,7 +549,7 @@ hostent* get_localhost(){
 }
 
 /**
- * blocks the process & waiting for client connection
+ * Blocks the process & waiting for client connection
  * @param readFDSet set of fds to read from
  */
 void waitForClientConnection(int fd_range, fd_set &readFDSet){
@@ -468,6 +559,11 @@ void waitForClientConnection(int fd_range, fd_set &readFDSet){
     }
 }
 
+/**
+ * checks weather the fd number clientFd is
+ * a valid fd number.
+ * @param clientFd
+ */
 void validate_fd(int clientFd){
     if(clientFd < 0){
         report_error(ACCEPT_FUNC);
@@ -475,7 +571,8 @@ void validate_fd(int clientFd){
 }
 
 /**
- * checks weather we need to update the range of fd. return the new range accordingly.
+ * Checks weather we need to update the range of fd.
+ * return the new range accordingly.
  * @param fd_range
  * @param clientFD
  */
@@ -487,12 +584,17 @@ int validate_and_update_range(int fd_range, int clientFD){
     return clientFD;
 }
 
+/**
+ * checks weather user_input is an EXIT message.
+ * @param user_input
+ * @return
+ */
 bool is_exit_msg(string user_input){
     return (user_input.compare("EXIT") == 0);
 }
 
 /**
- * sends to the clients_fds[i] an exit message
+ * Sends to the clients_fds[i] an exit message
  * @param i - an index
  */
 void send_user_exit_message(int i){
@@ -503,7 +605,7 @@ void send_user_exit_message(int i){
 }
 
 /**
- * sets free memory we allocated for clients_fds
+ * Free memory we allocated for clients_fds
  */
 void free_client_fds(){
     unsigned int j = 0;
@@ -514,7 +616,7 @@ void free_client_fds(){
 }
 
 /**
- * free all memory of the server
+ * Free the server's memory.
  */
 void free_memory(){
 
@@ -529,6 +631,10 @@ void free_memory(){
 
 }
 
+/**
+ *  EXIT command was typed.
+ *  Shuts down the server, and free memory.
+ */
 void exit_server(){
     free_memory();
     print_exit();
@@ -558,11 +664,11 @@ bool socket_closed_finished_reading(int bytes_was_read){
 }
 
 /**
- * recieves client input by the buffer, from the fd client fd.
+ * Receives client input by the buffer, from the fd client fd.
  * @param clients_fd
  * @param input_buffer
  */
-void recieve_client_input( int clients_fd, char *input_buffer){
+void receive_client_input(int clients_fd, char *input_buffer){
     ssize_t bytes_counter = 0;
     int bytes_was_read = 0;
     char last_letter;
@@ -572,7 +678,7 @@ void recieve_client_input( int clients_fd, char *input_buffer){
     buffer_pointer = input_buffer;
 
     while(!(last_letter == '\n')){
-        bytes_was_read = (int) recv (clients_fd, buffer_pointer, (WA_MAX_MESSAGE-bytes_counter), 0);
+        bytes_was_read = (int) recv (clients_fd, buffer_pointer, (WA_MAX_MESSAGE - bytes_counter), 0);
         if (bytes_was_read > 0) {
             bytes_counter += bytes_was_read;
             buffer_pointer += bytes_was_read;
@@ -581,9 +687,6 @@ void recieve_client_input( int clients_fd, char *input_buffer){
             report_error(RECV_FUNC);
 
             if(socket_closed_finished_reading(bytes_was_read)){ // Finished reading - socket was closed
-//                FD_CLR(clients_fd, &clientFDSet); // Removing FD from everywhere
-//                vector<int>::iterator mi = find(clients_fds.begin(), clients_fds.end(), clients_fd);
-//                clients_fds.erase(mi);
                 remove_fd(clients_fd);
             }
             return;
@@ -591,11 +694,54 @@ void recieve_client_input( int clients_fd, char *input_buffer){
         int to_buffer = bytes_counter-1;
         last_letter = input_buffer[to_buffer];
     }
-
-
-
 }
 
+/**
+ *  handles the input we got from the standard server input.
+ *  such as: "EXIT" etc..
+ */
+void handleServerInput(){
+    string user_input;
+    getline(cin, user_input);
+
+    if (is_exit_msg(user_input))
+        exit_server();
+}
+
+/**
+ * hanldes new connection request from a client who wants to connect the server.
+ * @param clientFd
+ * @param clientSocket
+ * @param fd_range
+ * @return the new fd_range in order to keep supplying the lowest available fd-number for
+ * a new client who wants to connect the server.
+ */
+int handleNewClient(int clientFd, sockaddr_in clientSocket, int fd_range){
+
+    int size = sizeof(struct sockaddr_in);
+    clientFd = accept(server_socket_fd, (struct sockaddr*)&clientSocket, (socklen_t*)&size);
+    validate_fd(clientFd);
+    fd_range = validate_and_update_range(fd_range, clientFd); // validate & update the range of fd files
+
+    FD_SET(clientFd, &clientFDSet); // enabling the byte for future reading - we must read the name or the client
+    clients_fds.push_back(clientFd);
+
+    return fd_range;
+}
+
+/**
+ * handles new message, arrived from existing client.
+ * @param readFDSet
+ */
+void handleClientMSG(fd_set readFDSet){
+    for (unsigned int index = 0; index < clients_fds.size(); ++index)
+        if(FD_ISSET(clients_fds[index], &readFDSet))
+        {
+            char input_buffer[WA_MAX_MESSAGE] = {0}; // we could use memset instead
+            receive_client_input(clients_fds[index], input_buffer);
+            handle_client_input(clients_fds[index] , input_buffer);
+        }
+}
 
 /**
  * takes care of accepting connections from clients,
@@ -618,31 +764,18 @@ void start_accept_client_connections() {
         readFDSet = clientFDSet;
         waitForClientConnection(fd_range, readFDSet);
 
-        if (FD_ISSET(STDIN_FILENO, &readFDSet)){ // input from standard server input
-            string user_input;
-            getline(cin, user_input);
-
-            if (is_exit_msg(user_input))
-                exit_server();
+        if (FD_ISSET(STDIN_FILENO, &readFDSet))// input from standard server input
+        {
+            handleServerInput();
         }
-        else if(FD_ISSET(server_socket_fd, &readFDSet)){ // we've got message from new clint who wants to connect the server
-
-            int size = sizeof(struct sockaddr_in);
-            clientFd = accept(server_socket_fd, (struct sockaddr*)&clientSocket, (socklen_t*)&size);
-            validate_fd(clientFd);
-            fd_range = validate_and_update_range(fd_range, clientFd); // validate & update the range of fd files
-
-            FD_SET(clientFd, &clientFDSet); // enabling the byte for future reading - we must read the name or the client
-            clients_fds.push_back(clientFd);
-        } else // handling client request - one of the existing clients have sent a new request
-
-            for (unsigned int index = 0; index < clients_fds.size(); ++index)
-                if(FD_ISSET(clients_fds[index], &readFDSet)){
-
-                    char input_buffer[WA_MAX_MESSAGE] = {0}; // we could use memset instead
-                    recieve_client_input(clients_fds[index], input_buffer);
-                    handle_client_input(clients_fds[index] , input_buffer);
-                }
+        else if(FD_ISSET(server_socket_fd, &readFDSet))// we've got message from new clint who wants to connect the server
+        {
+            fd_range = handleNewClient(clientFd, clientSocket, fd_range);
+        }
+        else // handling client request - one of the existing clients have sent a new request
+        {
+            handleClientMSG(readFDSet);
+        }
     }
 
 }
@@ -660,24 +793,26 @@ void initialize_socket(char *port){
     int server_fd;
     int int_port = atoi(port);
 
-    host = get_localhost();  // sets the hosts
+    host = get_localhost();  // sets the host
     memset((char*)&server_socket, 0, sizeof(struct sockaddr_in)); // sets sin_zero
     server_socket.sin_family = host->h_addrtype; // sets the connection's type
     memcpy(&server_socket.sin_addr, host->h_addr, host->h_length); // sets the ip to be the "host"'s ip
     server_socket.sin_port = htons(int_port); // sets the port
 
-    //....... creating the socket's fd ......//
+    //................................... creating the socket's fd .........................//
     server_fd = socket(AF_INET, SOCK_STREAM, DEFAULT_PROTOCOL);
     if (server_fd < 0){
         report_error(SOCKET_FUNC);
     }
-	//server_socket.sin_family=AF_INET;
-    server_socket.sin_addr.s_addr=INADDR_ANY;
-    // initializing the socket for the fd so it will listen to:
+    server_socket.sin_addr.s_addr = INADDR_ANY;
+
+    // Initializing the socket for the fd so it will listen to:
     if (bind(server_fd, ((struct sockaddr *)&server_socket), sizeof(struct sockaddr_in)) < 0){
         report_error(BIND_FUNC);
         close(server_fd);
-    }// sets max number of pending requests for the socket_fd
+    }
+
+    // Sets max number of pending requests for the socket_fd
     if (listen(server_fd, WA_MAX_PEND) == -1 ){
         report_error(LISTEN_FUNC);
     }

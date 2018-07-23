@@ -1,6 +1,6 @@
-//
-// Created by shlomie on 14/06/18.
-//
+/**
+ * @author Shlomie Berg
+ */
 
 #include <iostream>
 #include <netinet/in.h>
@@ -20,12 +20,22 @@
 
 std::string clientName;
 
+/**
+ * validates weather name is a valid name.
+ * @param name
+ * @return
+ */
 bool nameCheck (std::string name)
 {
     std::regex re("(([0-9])|([A-Z])|([a-z]))+");
     return std::regex_match(name, re);
 }
 
+/**
+ * Gets the message from server
+ * @param sfd
+ * @param buf
+ */
 void getServerMsg(int sfd, char *buf){
     int bcount; // counts bytes read
     int br; // bytes read this pass
@@ -59,6 +69,11 @@ void getServerMsg(int sfd, char *buf){
         std::cout << buf;
 }
 
+/**
+ * validates the server's response.
+ * @param sfd
+ * @param buf
+ */
 void validateServerResponse(int sfd, char *buf){
     std::string checkMsg = buf;
     if (!checkMsg.compare(NAME_IS_TAKEN) || !checkMsg.compare(CONNECTION_FAILED)){
@@ -67,6 +82,12 @@ void validateServerResponse(int sfd, char *buf){
     }
 }
 
+/**
+ * Handles the create group command.
+ * @param sfd
+ * @param name
+ * @param clients
+ */
 void createGroup(int sfd, const std::string name, const std::vector<std::string> clients)
 {
     if(!nameCheck(name)){
@@ -75,7 +96,7 @@ void createGroup(int sfd, const std::string name, const std::vector<std::string>
     }
     std::string clientNames = "";
     for (std::string client : clients){
-        if (!name.compare(client)) { // group name equals one of the client names
+        if (!name.compare(client)) { // Group name equals one of the client names
             print_create_group(false, false, clientName, name);
             return;
         }
@@ -88,12 +109,12 @@ void createGroup(int sfd, const std::string name, const std::vector<std::string>
 
     if(!clientNames.empty())
         clientNames = clientNames.substr(0,clientNames.length()-1);
-    else { // no clients
+    else { // No clients
         print_create_group(false, false, clientName, name);
         return;
     }
 
-    if(!clientNames.compare(clientName)){ // checks if there are only one user.
+    if(!clientNames.compare(clientName)){ // Checks if there are only one user.
         print_create_group(false, false, clientName, name);
         return;
     }
@@ -105,12 +126,18 @@ void createGroup(int sfd, const std::string name, const std::vector<std::string>
         exit(1);
     }
 
-    // wait for server response.
+    // Wait for server response.
     char msg [MAX_MSG];
     memset(msg, 0, sizeof(msg));
     getServerMsg(sfd, msg);
 }
 
+/**
+ * Handles the WHO command.
+ * @param sfd
+ * @param name
+ * @param message
+ */
 void clientSend(int sfd, std::string name, std::string message){
     if(!name.compare(clientName)){
         print_send(false, false, clientName, name, message);
@@ -123,14 +150,17 @@ void clientSend(int sfd, std::string name, std::string message){
         exit(1);
     }
 
-    // wait for server response.
+    // Wait for server response.
     char msg [MAX_MSG];
     memset(msg, 0, sizeof(msg));
     getServerMsg(sfd, msg);
 
 }
 
-
+/**
+ * Sends who request to the server.
+ * @param sfd
+ */
 void clientWho(int sfd){
     std::string serverRequest = "who\n";
     if (send(sfd, serverRequest.c_str(), serverRequest.length(), 0) < 0) {
@@ -139,12 +169,16 @@ void clientWho(int sfd){
         exit(1);
     }
 
-    // wait for server response.
+    // Wait for server response.
     char msg [MAX_MSG];
     memset(msg, 0, sizeof(msg));
     getServerMsg(sfd, msg);
 }
 
+/**
+ * Handles the client exit command.
+ * @param sfd
+ */
 void clientExit(int sfd){
     std::string serverRequest = "exit\n";
     if (send(sfd, serverRequest.c_str(), serverRequest.length(), 0) < 0) {
@@ -153,7 +187,7 @@ void clientExit(int sfd){
         exit(1);
     }
 
-    // wait for server response.
+    // Wait for server response.
     char msg [MAX_MSG];
     memset(msg, 0, sizeof(msg));
     getServerMsg(sfd, msg);
@@ -162,6 +196,11 @@ void clientExit(int sfd){
     exit(0);
 }
 
+/**
+ * manage the process of sending the user command to the server.
+ * @param sfd
+ * @param command
+ */
 void sendUserCommand(int sfd, std::string command) {
     const std::string uCommand = command.substr(0, command.find("\n"));
     command_type commandT;
@@ -190,6 +229,10 @@ void sendUserCommand(int sfd, std::string command) {
     }
 }
 
+/**
+ * listens to server while waits for a new message.
+ * @param sfd
+ */
 void listenToServer(int sfd){
 
     fd_set clientfds;
