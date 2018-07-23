@@ -1,0 +1,10 @@
+royakerman, shlomieb
+roy akerman (201661089), shlomie berg (204209928)
+EX: 3
+
+FILES:
+MapReduceFramework.cpp - the framework.
+
+Barrier.cpp - barrier used as a barrier for threads untill the map phase has been done.
+
+
